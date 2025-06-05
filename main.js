@@ -25,6 +25,26 @@ const world = new CANNON.World({
   gravity: new CANNON.Vec3(0, -9.82, 0),
 });
 
+// Materials
+const groundMaterial = new CANNON.Material();
+const bouncyMaterial = new CANNON.Material('bouncy');
+
+const contactMaterial = new CANNON.ContactMaterial(groundMaterial, bouncyMaterial, {
+  restitution: 1.0, // Full bounce
+});
+world.addContactMaterial(contactMaterial);
+
+// Player physics body
+const playerShape = new CANNON.Sphere(1);
+const playerBody = new CANNON.Body({
+  mass: 0,
+  shape: playerShape,
+  material: bouncyMaterial,
+});
+playerBody.position.copy(camera.position);
+world.addBody(playerBody);
+
+// Input control
 const velocity = new THREE.Vector3();
 const direction = new THREE.Vector3();
 const keyState = {};
@@ -32,7 +52,6 @@ const keyState = {};
 document.addEventListener('keydown', (event) => {
   keyState[event.code] = true;
 });
-
 document.addEventListener('keyup', (event) => {
   keyState[event.code] = false;
 });
@@ -95,7 +114,7 @@ for (let i = 0; i < 50; i++) {
       shape = new CANNON.Box(new CANNON.Vec3(size, size, size));
   }
 
-  const body = new CANNON.Body({ mass: 1 });
+  const body = new CANNON.Body({ mass: 1, material: bouncyMaterial });
   body.addShape(shape);
   body.position.copy(mesh.position);
   world.addBody(body);
@@ -110,7 +129,6 @@ for (let i = 0; i < 50; i++) {
 }
 
 // Ground (collision plane)
-const groundMaterial = new CANNON.Material();
 const groundBody = new CANNON.Body({
   type: CANNON.Body.STATIC,
   shape: new CANNON.Plane(),
@@ -140,29 +158,36 @@ function animate() {
   objects.forEach(({ mesh, body }) => {
     mesh.position.copy(body.position);
 
-    // Rotation solo visual
+    // Visual-only rotation
     mesh.rotation.x += mesh.userData.rotationSpeed.x;
     mesh.rotation.y += mesh.userData.rotationSpeed.y;
     mesh.rotation.z += mesh.userData.rotationSpeed.z;
+
+    // Optional: push objects away if too close to player
+    const distance = body.position.distanceTo(playerBody.position);
+    if (distance < 2) {
+      const forceDir = new CANNON.Vec3().copy(body.position).vsub(playerBody.position).unit();
+      body.applyImpulse(forceDir.scale(5), body.position);
+    }
   });
 
-  // Movimiento FPS con teclado y mouse
+  // FPS movement
   if (controls.isLocked) {
     direction.set(0, 0, 0);
-
-    if (keyState['KeyW']) direction.z -= 1; // adelante
-    if (keyState['KeyS']) direction.z += 1; // atrás
-    if (keyState['KeyA']) direction.x -= 1; // izquierda
-    if (keyState['KeyD']) direction.x += 1; // derecha
+    if (keyState['KeyW']) direction.z -= 1;
+    if (keyState['KeyS']) direction.z += 1;
+    if (keyState['KeyA']) direction.x -= 1;
+    if (keyState['KeyD']) direction.x += 1;
 
     direction.normalize();
-
     const moveSpeed = 10;
     velocity.copy(direction).multiplyScalar(moveSpeed * delta);
 
-    // Movimiento local respecto a cámara
     controls.getObject().translateX(velocity.x);
     controls.getObject().translateZ(velocity.z);
+
+    // Sync player body to camera
+    playerBody.position.copy(camera.position);
   }
 
   controls.update();
